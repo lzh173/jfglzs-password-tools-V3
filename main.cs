@@ -1,14 +1,7 @@
 ﻿using jfglzs_password_tool_v3.Utils;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.ToolTip;
 
 namespace jfglzs_password_tools_V3
 {
@@ -22,15 +15,19 @@ namespace jfglzs_password_tools_V3
             label1.Visible = false;
             label3.Visible = false;
             label3.ForeColor = Color.Blue;
+            label9.Visible = false;
+            label9.ForeColor = Color.Red;
         }
 
 
 
         private void button1_Click_1(object sender, EventArgs e)
         {
+            label1.Visible = true;
             int choose = 1;
             if (radioButton1.Checked == true)
             {
+
                 choose = 1;
                 label1.Text = PasswordGenerator.GeneratePassword(choose, dateTimePicker1.Value, textBox1.Text);
             }
@@ -58,7 +55,8 @@ namespace jfglzs_password_tools_V3
 
         private void button2_Click(object sender, EventArgs e)
         {
-            if(radioButton6.Checked == false && radioButton7.Checked == false)
+            label9.Visible = false;
+            if (radioButton6.Checked == false && radioButton7.Checked == false)
             {
                 string ps = RegistryHelper.GetRegistryValue("n");
                 if (ps != null)
@@ -83,14 +81,16 @@ namespace jfglzs_password_tools_V3
                 }
             }
 
-            if(radioButton6.Checked == true)
+            if (radioButton6.Checked == true)
             {
                 if (!Tools.HasSpecialCharacters(textBox2.Text))
                 {
                     radioButton7.Checked = true;
                     label3.Visible = true;
                     label3.Text = "自动选择版本-10.2+";
-                    textBox3.Text = "此版本密码无法读取";
+
+                    label9.Text = "此版本密码无法读取";
+                    label9.Visible = true;
                     return;
                 }
                 textBox2.Text = RegistryHelper.GetRegistryValue("n");
@@ -98,7 +98,8 @@ namespace jfglzs_password_tools_V3
             }
             if (radioButton7.Checked == true)
             {
-                if (Tools.HasSpecialCharacters(textBox2.Text)){
+                if (Tools.HasSpecialCharacters(textBox2.Text))
+                {
                     radioButton6.Checked = true;
                     label3.Visible = true;
                     label3.Text = "自动选择版本-9.98+";
@@ -107,15 +108,26 @@ namespace jfglzs_password_tools_V3
                     return;
                 }
                 textBox2.Text = RegistryHelper.GetRegistryValue("n");
-                textBox3.Text = "此版本密码无法读取";
+                label9.Text = "此版本密码无法读取";
+                label9.Visible = true;
 
             }
-           
+
         }
 
         private void button3_Click(object sender, EventArgs e)
         {
 
         }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            label6.Text = ComputerRoomManagerDetector.InstallationDetection();
+            label7.Text = ComputerRoomManagerDetector.RandomProcessDetection3();
+            int t = JfglzsHelper.GetDaemonProcessID();
+            label8.Text = t.ToString();
+
+        }
     }
+
 }

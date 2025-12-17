@@ -1,7 +1,10 @@
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -131,7 +134,10 @@ namespace jfglzs_password_tool_v3.Utils
         }
 
 
+        /// <summary>
         /// 获取计算机名（对于助手的特征）
+        /// </summary>
+        /// <returns>计算机名最后一位的ASCII-str</returns>
         public static string GetComputerLastCharAscii()
         {
             string computerName = Environment.MachineName;
@@ -459,4 +465,1135 @@ namespace jfglzs_password_tool_v3.Utils
             return !Regex.IsMatch(input, pattern);
         }
     }
+
+
+
+
+/// <summary>
+/// 机房管理助手检测类
+/// 用于检测和退出机房管理助手的各种版本
+/// </summary>
+public class ComputerRoomManagerDetector
+    {
+        #region 静态变量（对应易语言的匿名程序集变量）
+
+        private static string anonymousAssemblyVar1 = string.Empty;  // 安装目录
+        private static string anonymousAssemblyVar2 = string.Empty;  // prozs文件名
+        private static long anonymousAssemblyVar3 = 0;               // 文件大小特征
+        private static string anonymousAssemblyVar4 = string.Empty;  // 文件MD5哈希特征
+        private static string anonymousAssemblyVar5 = string.Empty;  // 服务程序路径
+
+        private static int anonymousGlobalVar1 = 0;                  // 服务检测状态
+
+        private static readonly HashSet<string> excludedDirectories = new HashSet<string>
+    {
+        "KuGou", "PerfLogs", "Program Files", "Program Files (x86)", "Users", "Windows"
+    };
+
+        #endregion
+
+        #region 公共方法
+
+        /// <summary>
+        /// ECK_机房管理助手_安装检测
+        /// 返回安装目录
+        /// </summary>
+        public static string InstallationDetection()
+        {
+            try
+            {
+                DebugOutput("[安装检测] 开始检测安装目录");
+
+                string cDrive = @"C:\";
+
+                if (!Directory.Exists(cDrive))
+                {
+                    DebugOutput("[安装检测] C盘不存在");
+                    return string.Empty;
+                }
+
+                // 获取C盘下的所有目录
+                string[] directories = Directory.GetDirectories(cDrive);
+                DebugOutput($"[安装检测] 发现 {directories.Length} 个目录");
+
+                foreach (string directory in directories)
+                {
+                    try
+                    {
+                        string dirName = Path.GetFileName(directory);
+
+                        // 跳过排除的目录
+                        if (excludedDirectories.Contains(dirName, StringComparer.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        // 检查目录下是否有特定的exe文件
+                        string[] exeFiles = Directory.GetFiles(directory, "*.exe", SearchOption.TopDirectoryOnly);
+
+                        bool hasZmserv = false;
+                        bool hasJfglzs = false;
+
+                        foreach (string exeFile in exeFiles)
+                        {
+                            string fileName = Path.GetFileName(exeFile);
+                            if (fileName.Equals("zmserv.exe", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasZmserv = true;
+                            }
+                            else if (fileName.Equals("jfglzs.exe", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasJfglzs = true;
+                            }
+
+                            if (hasZmserv && hasJfglzs)
+                            {
+                                break;
+                            }
+                        }
+
+                        if (hasZmserv && hasJfglzs)
+                        {
+                            anonymousAssemblyVar1 = directory;
+                            DebugOutput($"[安装检测] 已找到安装目录: {anonymousAssemblyVar1}");
+                            return anonymousAssemblyVar1;
+                        }
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        // 无权限访问的目录，跳过
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugOutput($"[安装检测] 检查目录 {directory} 时出错: {ex.Message}");
+                        continue;
+                    }
+                }
+
+                // 如果未找到安装目录，尝试通过服务检测
+                if (string.IsNullOrEmpty(anonymousAssemblyVar5))
+                {
+                    ServiceDetection();
+                }
+
+                if (!string.IsNullOrEmpty(anonymousAssemblyVar5))
+                {
+                    anonymousAssemblyVar1 = Path.GetDirectoryName(anonymousAssemblyVar5);
+                    return anonymousAssemblyVar1;
+                }
+
+                DebugOutput("[安装检测] 未发现安装目录");
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[安装检测] 发生异常: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// ECK_机房管理助手_随机进程检测1
+        /// 检测安装目录下的随机进程，返回随机进程路径。适用7.1及以下版本
+        /// </summary>
+        public static string RandomProcessDetection1()
+        {
+            try
+            {
+                DebugOutput("[随机进程检测1] 开始检测");
+
+                if (string.IsNullOrEmpty(anonymousAssemblyVar1) &&
+                    string.IsNullOrEmpty(InstallationDetection()))
+                {
+                    DebugOutput("[随机进程检测1] 未找到安装目录");
+                    return string.Empty;
+                }
+
+                if (!GetProzsFileFeature())
+                {
+                    return string.Empty;
+                }
+
+                if (!Directory.Exists(anonymousAssemblyVar1))
+                {
+                    DebugOutput($"[随机进程检测1] 安装目录不存在: {anonymousAssemblyVar1}");
+                    return string.Empty;
+                }
+
+                string[] exeFiles = Directory.GetFiles(anonymousAssemblyVar1, "*.exe", SearchOption.TopDirectoryOnly);
+
+                foreach (string exeFile in exeFiles)
+                {
+                    string fileName = Path.GetFileName(exeFile);
+
+                    // 检查文件名长度是否为7
+                    if (fileName.Length == 7)
+                    {
+                        string fileHash = CalculateFileHash(exeFile);
+                        if (fileHash == anonymousAssemblyVar4)
+                        {
+                            DebugOutput($"[随机进程检测1] 已找到: {exeFile}");
+                            return exeFile;
+                        }
+                    }
+                }
+
+                DebugOutput("[随机进程检测1] 未发现");
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[随机进程检测1] 发生异常: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// ECK_机房管理助手_随机进程检测2
+        /// 返回随机进程路径，根据文件夹名称长度特征搜索 Program Files 子目录中的随机进程。
+        /// 适用 [7.2, 9.95) 版本区间
+        /// </summary>
+        public static string RandomProcessDetection2()
+        {
+            try
+            {
+                DebugOutput("[随机进程检测2] 开始检测");
+
+                if (string.IsNullOrEmpty(anonymousAssemblyVar1) &&
+                    string.IsNullOrEmpty(InstallationDetection()))
+                {
+                    DebugOutput("[随机进程检测2] 未找到安装目录");
+                    return string.Empty;
+                }
+
+                DebugOutput($"[随机进程检测2] prozs_size: {anonymousAssemblyVar3}, prozs_md5: {anonymousAssemblyVar4}");
+
+                if (!GetProzsFileFeature())
+                {
+                    return string.Empty;
+                }
+
+                string programFilesPath = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                return CheckProgramFilesWithPattern(programFilesPath);
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[随机进程检测2] 发生异常: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// ECK_机房管理助手_随机进程检测3
+        /// 返回随机进程路径，适用范围较广。本函数遍历进程列表，识别prozs复制体。
+        /// 适用7.x及以后的所有版本
+        /// </summary>
+        public static string RandomProcessDetection3()
+        {
+            try
+            {
+                DebugOutput("[随机进程检测3] 开始检测");
+
+                if (string.IsNullOrEmpty(anonymousAssemblyVar1) &&
+                    string.IsNullOrEmpty(InstallationDetection()))
+                {
+                    DebugOutput("[随机进程检测3] 未找到安装目录");
+                    return string.Empty;
+                }
+
+                DebugOutput($"[随机进程检测3] prozs_size: {anonymousAssemblyVar3}, prozs_md5: {anonymousAssemblyVar4}");
+
+                if (!GetProzsFileFeature())
+                {
+                    return string.Empty;
+                }
+
+                Process[] processes = Process.GetProcesses();
+
+                foreach (Process process in processes)
+                {
+                    try
+                    {
+                        string processName = process.ProcessName;
+
+                        // 检查进程名长度特征
+                        if (processName.Length >= 7 && processName.Length <= 15)
+                        {
+                            string processPath = GetProcessPath(process);
+                            if (!string.IsNullOrEmpty(processPath))
+                            {
+                                FileInfo fileInfo = new FileInfo(processPath);
+                                if (fileInfo.Length == anonymousAssemblyVar3)
+                                {
+                                    string fileHash = CalculateFileHash(processPath);
+                                    if (fileHash == anonymousAssemblyVar4)
+                                    {
+                                        // 检查不是安装目录下的原始文件
+                                        string originalFile = Path.Combine(anonymousAssemblyVar1, anonymousAssemblyVar2);
+                                        if (!string.Equals(processPath.Trim(), originalFile.Trim(), StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            DebugOutput($"[随机进程检测3] 已找到: {processPath}");
+                                            return processPath;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugOutput($"[随机进程检测3] 检查进程 {process.ProcessName} 时出错: {ex.Message}");
+                        continue;
+                    }
+                }
+
+                DebugOutput("[随机进程检测3] 未发现");
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[随机进程检测3] 发生异常: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// ECK_机房管理助手_随机进程检测4
+        /// 返回随机进程路径，本函数遍历Program Files和Program Files (x86)目录，
+        /// 对只有一个exe文件的目录进行判别。适用7.2及以上版本
+        /// </summary>
+        public static string RandomProcessDetection4()
+        {
+            try
+            {
+                DebugOutput("[随机进程检测4] 开始检测");
+
+                if (string.IsNullOrEmpty(anonymousAssemblyVar1) &&
+                    string.IsNullOrEmpty(InstallationDetection()))
+                {
+                    DebugOutput("[随机进程检测4] 未找到安装目录");
+                    return string.Empty;
+                }
+
+                if (!GetProzsFileFeature())
+                {
+                    return string.Empty;
+                }
+
+                // 检查 Program Files 目录
+                string programFilesPath = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                string result = CheckSingleExeDirectory(programFilesPath);
+                if (!string.IsNullOrEmpty(result))
+                {
+                    return result;
+                }
+
+                // 检查 Program Files (x86) 目录
+                if (Environment.Is64BitOperatingSystem)
+                {
+                    string programFilesX86Path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+                    if (!string.IsNullOrEmpty(programFilesX86Path))
+                    {
+                        result = CheckSingleExeDirectory(programFilesX86Path);
+                        if (!string.IsNullOrEmpty(result))
+                        {
+                            return result;
+                        }
+                    }
+                }
+
+                DebugOutput("[随机进程检测4] 未发现");
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[随机进程检测4] 发生异常: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// ECK_机房管理助手_随机进程检测5
+        /// 返回随机进程路径，本函数检测助手的编号显示窗口。适用9.9x及以上版本
+        /// </summary>
+        public static string RandomProcessDetection5()
+        {
+            // 这个方法已经在前面的代码中实现
+            // 这里只是占位符，实际实现需要完整的Windows API封装
+            DebugOutput("[随机进程检测5] 开始检测");
+
+            try
+            {
+                string computerName = Environment.MachineName;
+
+                // 这里需要实现窗口枚举和检测逻辑
+                // 由于代码较长，这里只提供框架
+
+                // 实际实现需要调用Windows API枚举窗口
+                // 查找类名为"bianhao"的窗口
+                // 然后检查子窗口标题是否包含计算机名
+
+                DebugOutput("[随机进程检测5] 功能需要完整的Windows API实现");
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[随机进程检测5] 发生异常: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// ECK_机房管理助手_退出
+        /// 结束所有检测到的机房管理助手进程
+        /// </summary>
+        public static void ExitComputerRoomManager()
+        {
+            try
+            {
+                DebugOutput("[退出] 开始结束机房管理助手进程");
+
+                HashSet<string> processNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "jfglzs.exe",
+                "jfglzsp.exe"
+            };
+
+                // 收集所有检测到的进程名
+                string[] detectionMethods = new string[]
+                {
+                RandomProcessDetection1(),
+                RandomProcessDetection2(),
+                RandomProcessDetection3(),
+                RandomProcessDetection4()
+                };
+
+                foreach (string processPath in detectionMethods)
+                {
+                    if (!string.IsNullOrEmpty(processPath))
+                    {
+                        string fileName = Path.GetFileName(processPath);
+                        if (!string.IsNullOrEmpty(fileName))
+                        {
+                            processNames.Add(fileName);
+                        }
+                    }
+                }
+
+                DebugOutput($"[退出] 需要结束的进程: {string.Join(", ", processNames)}");
+
+                // 结束所有检测到的进程
+                foreach (string processName in processNames)
+                {
+                    int retryCount = 0;
+                    while (retryCount < 10)
+                    {
+                        Process[] processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName));
+                        if (processes.Length == 0)
+                        {
+                            break;
+                        }
+
+                        foreach (Process process in processes)
+                        {
+                            try
+                            {
+                                process.Kill();
+                                process.WaitForExit(1000);
+                                DebugOutput($"[退出] 已结束进程: {process.ProcessName}");
+                            }
+                            catch (Exception ex)
+                            {
+                                DebugOutput($"[退出] 结束进程 {process.ProcessName} 失败: {ex.Message}");
+                            }
+                        }
+
+                        retryCount++;
+                        System.Threading.Thread.Sleep(200);
+                    }
+                }
+
+                // 停止服务
+                StopService("zmserv");
+                System.Threading.Thread.Sleep(3000);
+
+                // 确保zmserv进程结束
+                int serviceRetry = 0;
+                while (serviceRetry < 10)
+                {
+                    Process[] zmservProcesses = Process.GetProcessesByName("zmserv");
+                    if (zmservProcesses.Length == 0)
+                    {
+                        break;
+                    }
+
+                    foreach (Process process in zmservProcesses)
+                    {
+                        try
+                        {
+                            process.Kill();
+                            process.WaitForExit(1000);
+                        }
+                        catch { }
+                    }
+
+                    serviceRetry++;
+                    System.Threading.Thread.Sleep(200);
+                }
+
+                StopService("zmserv");
+
+                DebugOutput("[退出] 机房管理助手退出完成");
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[退出] 发生异常: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region 私有辅助方法
+
+        /// <summary>
+        /// ECK_机房管理助手_服务检测
+        /// 返回服务程序路径
+        /// </summary>
+        private static string ServiceDetection()
+        {
+            try
+            {
+                anonymousGlobalVar1 = 1;
+                string servicePath = string.Empty;
+
+                // 尝试从注册表获取服务路径
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\zmserv\Parameters"))
+                {
+                    if (key != null)
+                    {
+                        object value = key.GetValue("Application");
+                        if (value != null)
+                        {
+                            servicePath = value.ToString();
+                        }
+                    }
+                }
+
+                if (string.IsNullOrEmpty(servicePath))
+                {
+                    anonymousGlobalVar1 = 2;
+                    using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\zmserv"))
+                    {
+                        if (key != null)
+                        {
+                            object value = key.GetValue("ImagePath");
+                            if (value != null)
+                            {
+                                servicePath = value.ToString();
+                                // 清理路径（可能包含引号）
+                                servicePath = servicePath.Trim('"');
+                            }
+                        }
+                    }
+                }
+
+                if (string.IsNullOrEmpty(servicePath))
+                {
+                    DebugOutput("[服务检测] 未发现");
+                    anonymousGlobalVar1 = 0;
+                }
+                else
+                {
+                    DebugOutput($"[服务检测] 已找到服务程序: {servicePath}");
+                    anonymousAssemblyVar5 = servicePath;
+                }
+
+                return servicePath;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[服务检测] 发生异常: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// ECK_机房管理助手_获取prozs文件特征
+        /// </summary>
+        private static bool GetProzsFileFeature()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(anonymousAssemblyVar1))
+                {
+                    DebugOutput("[获取prozs文件特征] 安装目录为空");
+                    return false;
+                }
+
+                anonymousAssemblyVar2 = GetProzsFileName();
+                if (string.IsNullOrEmpty(anonymousAssemblyVar2))
+                {
+                    DebugOutput("[获取prozs文件特征] 未找到prozs文件名");
+                    return false;
+                }
+
+                string prozsFilePath = Path.Combine(anonymousAssemblyVar1, anonymousAssemblyVar2);
+
+                if (!File.Exists(prozsFilePath))
+                {
+                    DebugOutput($"[获取prozs文件特征] 文件不存在: {prozsFilePath}");
+                    return false;
+                }
+
+                FileInfo fileInfo = new FileInfo(prozsFilePath);
+                anonymousAssemblyVar3 = fileInfo.Length;
+                DebugOutput($"[获取prozs文件特征] prozs_size: {anonymousAssemblyVar3}");
+
+                if (anonymousAssemblyVar3 <= 0)
+                {
+                    DebugOutput("[获取prozs文件特征] 文件大小为0");
+                    return false;
+                }
+
+                anonymousAssemblyVar4 = CalculateFileHash(prozsFilePath);
+                DebugOutput($"[获取prozs文件特征] prozs_md5: {anonymousAssemblyVar4}");
+
+                if (string.IsNullOrEmpty(anonymousAssemblyVar4))
+                {
+                    DebugOutput("[获取prozs文件特征] 计算MD5失败");
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[获取prozs文件特征] 发生异常: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// ECK_机房管理助手_获取prozs文件名
+        /// </summary>
+        private static string GetProzsFileName()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(anonymousAssemblyVar1))
+                {
+                    return string.Empty;
+                }
+
+                // 检查prozs.exe
+                if (anonymousGlobalVar1 != 2 && File.Exists(Path.Combine(anonymousAssemblyVar1, "prozs.exe")))
+                {
+                    return "prozs.exe";
+                }
+
+                // 检查przs.exe
+                if (File.Exists(Path.Combine(anonymousAssemblyVar1, "przs.exe")))
+                {
+                    return "przs.exe";
+                }
+
+                // 枚举所有exe文件，检查文件版本信息
+                string[] exeFiles = Directory.GetFiles(anonymousAssemblyVar1, "*.exe", SearchOption.TopDirectoryOnly);
+
+                foreach (string exeFile in exeFiles)
+                {
+                    try
+                    {
+                        FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(exeFile);
+
+                        if (versionInfo.FileDescription?.Trim() == "Windows 服务主进程" &&
+                            versionInfo.LegalTrademarks?.Trim() == "z")
+                        {
+                            return Path.GetFileName(exeFile);
+                        }
+                    }
+                    catch
+                    {
+                        // 跳过无法读取版本信息的文件
+                        continue;
+                    }
+                }
+
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[获取prozs文件名] 发生异常: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 检查Program Files目录（带模式匹配）
+        /// </summary>
+        private static string CheckProgramFilesWithPattern(string basePath)
+        {
+            try
+            {
+                if (!Directory.Exists(basePath))
+                {
+                    DebugOutput($"[随机进程检测2] 目录不存在: {basePath}");
+                    return string.Empty;
+                }
+
+                string[] subDirectories = Directory.GetDirectories(basePath);
+                DebugOutput($"[随机进程检测2] 发现 {subDirectories.Length} 个目录");
+
+                foreach (string subDir in subDirectories)
+                {
+                    try
+                    {
+                        string dirName = Path.GetFileName(subDir);
+                        int dirNameLength = dirName.Length;
+
+                        bool shouldCheck = false;
+
+                        // 模式匹配
+                        if (dirNameLength >= 4 && dirName.Substring(0, 4).Equals("temp", StringComparison.OrdinalIgnoreCase) && dirNameLength == 7)
+                        {
+                            shouldCheck = true;
+                        }
+                        else if (dirNameLength >= 2 && dirName.Substring(0, 2).Equals("pr", StringComparison.OrdinalIgnoreCase) && dirNameLength == 5)
+                        {
+                            shouldCheck = true;
+                        }
+                        else if (dirNameLength == 4 || dirNameLength == 3)
+                        {
+                            shouldCheck = true;
+                        }
+
+                        if (shouldCheck)
+                        {
+                            string[] exeFiles = Directory.GetFiles(subDir, "*.exe", SearchOption.TopDirectoryOnly);
+
+                            foreach (string exeFile in exeFiles)
+                            {
+                                string fileName = Path.GetFileName(exeFile);
+                                int fileNameLength = fileName.Length;
+
+                                if (fileNameLength == 8 || fileNameLength == 9 || fileNameLength == 11 || fileNameLength == 14)
+                                {
+                                    FileInfo fileInfo = new FileInfo(exeFile);
+                                    if (fileInfo.Length == anonymousAssemblyVar3)
+                                    {
+                                        string fileHash = CalculateFileHash(exeFile);
+                                        if (fileHash == anonymousAssemblyVar4)
+                                        {
+                                            DebugOutput($"[随机进程检测2] 已找到: {exeFile}");
+                                            return exeFile;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugOutput($"[随机进程检测2] 检查目录 {subDir} 时出错: {ex.Message}");
+                        continue;
+                    }
+                }
+
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[随机进程检测2] 检查目录 {basePath} 时出错: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 检查只有一个exe文件的目录
+        /// </summary>
+        private static string CheckSingleExeDirectory(string basePath)
+        {
+            try
+            {
+                if (!Directory.Exists(basePath))
+                {
+                    return string.Empty;
+                }
+
+                DebugOutput($"[随机进程检测4] 扫描目录: {basePath}");
+
+                string[] subDirectories = Directory.GetDirectories(basePath);
+                DebugOutput($"[随机进程检测4] 发现 {subDirectories.Length} 个目录");
+
+                foreach (string subDir in subDirectories)
+                {
+                    try
+                    {
+                        string[] exeFiles = Directory.GetFiles(subDir, "*.exe", SearchOption.TopDirectoryOnly);
+
+                        if (exeFiles.Length != 1)
+                        {
+                            continue;
+                        }
+
+                        string exeFile = exeFiles[0];
+                        FileInfo fileInfo = new FileInfo(exeFile);
+
+                        if (fileInfo.Length == anonymousAssemblyVar3)
+                        {
+                            string fileHash = CalculateFileHash(exeFile);
+                            if (fileHash == anonymousAssemblyVar4)
+                            {
+                                DebugOutput($"[随机进程检测4] 已找到: {exeFile}");
+                                return exeFile;
+                            }
+                        }
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugOutput($"[随机进程检测4] 检查目录 {subDir} 时出错: {ex.Message}");
+                        continue;
+                    }
+                }
+
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[随机进程检测4] 检查目录 {basePath} 时出错: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 计算文件MD5哈希
+        /// </summary>
+        private static string CalculateFileHash(string filePath)
+        {
+            try
+            {
+                using (FileStream stream = File.OpenRead(filePath))
+                using (MD5 md5 = MD5.Create())
+                {
+                    byte[] hash = md5.ComputeHash(stream);
+                    return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[计算文件哈希] 失败 {filePath}: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 获取进程路径
+        /// </summary>
+        private static string GetProcessPath(Process process)
+        {
+            try
+            {
+                return process.MainModule?.FileName ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 停止服务
+        /// </summary>
+        private static void StopService(string serviceName)
+        {
+            try
+            {
+                Process process = new Process();
+                process.StartInfo.FileName = "net";
+                process.StartInfo.Arguments = $"stop {serviceName}";
+                process.StartInfo.CreateNoWindow = true;
+                process.StartInfo.UseShellExecute = false;
+                process.Start();
+                process.WaitForExit(5000);
+                DebugOutput($"[停止服务] 已尝试停止服务: {serviceName}");
+            }
+            catch (Exception ex)
+            {
+                DebugOutput($"[停止服务] 停止服务 {serviceName} 失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 文本比对
+        /// </summary>
+        private static bool TextCompare(string text1, string text2, bool caseSensitive = false)
+        {
+            if (caseSensitive)
+            {
+                return text1 == text2;
+            }
+            else
+            {
+                return string.Equals(text1, text2, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
+        /// 调试输出
+        /// </summary>
+        private static void DebugOutput(string message)
+        {
+            Console.WriteLine(message);
+            Debug.WriteLine(message);
+        }
+
+        #endregion
+    }
+    public static class HostsFileReset
+    {
+        private const string DefaultHostsContent = @"# Copyright (c) 1993-2009 Microsoft Corp.
+#
+# This is a sample HOSTS file used by Microsoft TCP/IP for Windows.
+#
+# This file contains the mappings of IP addresses to host names. Each
+# entry should be kept on an individual line. The IP address should
+# be placed in the first column followed by the corresponding host name.
+# The IP address and the host name should be separated by at least one
+# space.
+#
+# Additionally, comments (such as these) may be inserted on individual
+# lines or following the machine name denoted by a '#' symbol.
+#
+# For example:
+#
+#      102.54.94.97     rhino.acme.com          # source server
+#       38.25.63.10     x.acme.com              # x client host
+
+# localhost name resolution is handled within DNS itself.
+# 127.0.0.1       localhost
+# ::1             localhost";
+
+        // Windows API 声明
+        [DllImport("dnsapi.dll", EntryPoint = "DnsFlushResolverCache")]
+        private static extern uint DnsFlushResolverCache();
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetWindowsDirectory(StringBuilder lpBuffer, int uSize);
+
+        public static bool ResetHosts()
+        {
+            try
+            {
+                Console.Write(" -> 检查文件是否存在...\n");
+
+                // 获取 hosts 文件路径
+                string hostsPath = GetHostsFilePath();
+
+                if (!File.Exists(hostsPath))
+                {
+                    Console.Write(" (!) hosts 文件不存在.\n");
+                    return false;
+                }
+
+                Console.Write(" -> 获取原文件权限...\n");
+                FileAttributes originalAttributes = File.GetAttributes(hostsPath);
+
+                Console.Write(" -> 设置文件权限...\n");
+                // 移除只读属性
+                File.SetAttributes(hostsPath, originalAttributes & ~FileAttributes.ReadOnly);
+
+                Console.Write(" -> 重置文件...\n");
+
+                // 备份原文件（可选）
+                string backupPath = hostsPath + ".backup";
+                if (!File.Exists(backupPath))
+                {
+                    File.Copy(hostsPath, backupPath, true);
+                }
+
+                // 写入默认内容
+                using (FileStream fs = new FileStream(hostsPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (StreamWriter sw = new StreamWriter(fs, Encoding.ASCII))
+                {
+                    sw.Write(DefaultHostsContent);
+                    sw.Flush();
+                }
+
+                if (!VerifyHostsFile(hostsPath))
+                {
+                    Console.Write("\n (!) 重置失败, 无法写入.\n\n");
+
+                    // 尝试恢复备份
+                    if (File.Exists(backupPath))
+                    {
+                        File.Copy(backupPath, hostsPath, true);
+                    }
+
+                    return false;
+                }
+
+                Console.Write(" -> 恢复文件权限...\n");
+                File.SetAttributes(hostsPath, originalAttributes);
+
+                Console.Write(" -> 刷新 DNS 缓存...\n");
+                bool dnsFlushed = FlushDnsCache();
+
+                if (!dnsFlushed)
+                {
+                    Console.Write("\n (!) 刷新 DNS 失败.\n\n");
+                }
+
+                Console.Write(" -> hosts 文件重置成功！\n");
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Console.Write("\n (!) 权限不足，请以管理员身份运行此程序.\n\n");
+                return false;
+            }
+            catch (IOException ex)
+            {
+                Console.Write($"\n (!) 文件操作失败: {ex.Message}\n\n");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.Write($"\n (!) 重置失败: {ex.Message}\n\n");
+                return false;
+            }
+        }
+
+        private static string GetHostsFilePath()
+        {
+            // 获取 Windows 目录
+            StringBuilder windowsDir = new StringBuilder(260);
+            GetWindowsDirectory(windowsDir, windowsDir.Capacity);
+
+            return Path.Combine(windowsDir.ToString(), @"System32\drivers\etc\hosts");
+        }
+
+        private static bool VerifyHostsFile(string filePath)
+        {
+            try
+            {
+                if (!File.Exists(filePath))
+                    return false;
+
+                string content = File.ReadAllText(filePath);
+                return content.Contains("# Copyright (c) 1993-2009 Microsoft Corp.");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool FlushDnsCache()
+        {
+            try
+            {
+                uint result = DnsFlushResolverCache();
+                return result == 0; // 返回 0 表示成功
+            }
+            catch (DllNotFoundException)
+            {
+                Console.Write(" (!) 找不到 dnsapi.dll\n");
+                return false;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                Console.Write(" (!) 找不到 DnsFlushResolverCache 函数\n");
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // 更完整的权限处理方法
+        private static void SetFullControlPermissions(string filePath)
+        {
+            try
+            {
+                // .NET 4.8 中可以使用 System.Security.AccessControl 处理更复杂的权限
+                // 但对于简单的只读属性，上面的方法已经足够
+                var fileInfo = new FileInfo(filePath);
+                if (fileInfo.IsReadOnly)
+                {
+                    fileInfo.IsReadOnly = false;
+                }
+            }
+            catch
+            {
+                // 忽略权限设置错误
+            }
+        }
+    }
+
+    /// <summary>
+    /// 机房管理助手工具类 - DLL 封装
+    /// </summary>
+    public class JfglzsHelper
+    {
+        // DLL 导入
+        private const string DLL_NAME = "g.dll"; // 请替换为实际的DLL文件名
+
+        /// <summary>
+        /// 获取守护进程ID
+        /// </summary>
+        /// <returns>进程ID，如果失败返回0</returns>
+        [DllImport(DLL_NAME, EntryPoint = "GetDaemonProcessID", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int GetDaemonProcessID();
+
+        /// <summary>
+        /// 获取机房管理助手主进程ID
+        /// </summary>
+        /// <returns>进程ID，如果失败返回0</returns>
+        [DllImport(DLL_NAME, EntryPoint = "GetJfglzsnProcessID", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int GetJfglzsmProcessID();
+
+        /// <summary>
+        /// 获取服务进程ID
+        /// </summary>
+        /// <returns>进程ID，如果失败返回0</returns>
+        [DllImport(DLL_NAME, EntryPoint = "GetServiceProcessId", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int GetServiceProcessId();
+
+        /// <summary>
+        /// 清理辅助进程
+        /// </summary>
+        /// <returns>成功清理的进程数量</returns>
+        [DllImport(DLL_NAME, EntryPoint = "HelperCleanupProcesses", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int HelperCleanupProcesses();
+
+        /// <summary>
+        /// 终止进程扩展方法
+        /// </summary>
+        /// <param name="processId">进程ID</param>
+        /// <param name="force">是否强制终止</param>
+        /// <returns>是否成功</returns>
+        [DllImport(DLL_NAME, EntryPoint = "KillProcessEx", CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool KillProcessEx(uint processId, bool force);
+
+        /// <summary>
+        /// 移除浏览器限制
+        /// </summary>
+        /// <returns>是否成功</returns>
+        [DllImport(DLL_NAME, EntryPoint = "RemoveBrowserRestrictions", CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool RemoveBrowserRestrictions();
+
+        // 可选：如果DLL有字符串参数或需要复杂的调用，可以添加更多封装
+    }
 }
+
+ 
